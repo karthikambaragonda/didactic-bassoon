@@ -14,13 +14,15 @@ const app = express();
 
 // Database connection
 const pool = mysql.createPool({
-    host: process.env.DB_HOST || 'localhost',
-    user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || 'aa',
-    database: process.env.DB_NAME || 'ShopNestaa',
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
+  host: process.env.AZURE_MYSQL_HOST || 'localhost',
+  user: process.env.AZURE_MYSQL_USER || 'root',
+  password: process.env.AZURE_MYSQL_PASSWORD || 'aa',
+  database: process.env.AZURE_MYSQL_DATABASE || 'ShopNestaa',
+  port: process.env.AZURE_MYSQL_PORT || 3306,
+  ssl: process.env.AZURE_MYSQL_SSL === 'true' ? { rejectUnauthorized: true } : false,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0
 });
 
 // Middleware
@@ -1713,4 +1715,5 @@ app.post('/api/products/:id/reviews', async (req, res) => {
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`)
+
 });
