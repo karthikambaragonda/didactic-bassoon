@@ -10,20 +10,30 @@ import bodyParser from 'body-parser';
 import cron from 'node-cron';
 import nodemailer from "nodemailer";
 dotenv.config();
-const app = express();
+const app = express(); import pkg from 'pg';
+const { Pool } = pkg;
+
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL || 'tgres',
+    ssl: {
+        rejectUnauthorized: false, // Supabase requires SSL
+    },
+});
+
+
 
 // Database connection
-const pool = mysql.createPool({
-  host: process.env.AZURE_MYSQL_HOST || 'localhost',
-  user: process.env.AZURE_MYSQL_USER || 'root',
-  password: process.env.AZURE_MYSQL_PASSWORD || 'aa',
-  database: process.env.AZURE_MYSQL_DATABASE || 'ShopNestaa',
-  port: process.env.AZURE_MYSQL_PORT || 3306,
-  ssl: process.env.AZURE_MYSQL_SSL === 'true' ? { rejectUnauthorized: true } : false,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0
-});
+// const pool = mysql.createPool({
+//   host: process.env.AZURE_MYSQL_HOST || 'localhost',
+//   user: process.env.AZURE_MYSQL_USER || 'root',
+//   password: process.env.AZURE_MYSQL_PASSWORD || 'aa',
+//   database: process.env.AZURE_MYSQL_DATABASE || 'ShopNestaa',
+//   port: process.env.AZURE_MYSQL_PORT || 3306,
+//   ssl: process.env.AZURE_MYSQL_SSL === 'true' ? { rejectUnauthorized: true } : false,
+//   waitForConnections: true,
+//   connectionLimit: 10,
+//   queueLimit: 0
+// });
 
 // Middleware
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
@@ -1632,35 +1642,40 @@ const checkPriceAlerts = async (productId) => {
 // Cron job: runs every minute
 cron.schedule('*/4 * * * *', async () => {
     try {
-        const [products] = await pool.query('SELECT id, price, base_price FROM products');
+        const result = await pool.query('SELECT id, price, base_price FROM products');
+        const products = result.rows;
 
-        for (let product of products) {
+        if (!products || products.length === 0) {
+            console.warn('⚠️ No products found to update.');
+            return; // exit early
+        }
+
+        for (const product of products) {
             const basePrice = product.base_price;
-
             const randomFactor = Math.random();
             let changePercent;
 
             // 30% chance for a small increase (profit), 70% chance for a decrease (sale)
             if (randomFactor < 0.3) {
-                // Increase between 0% to +2%
-                changePercent = Math.random() * 0.02; // 0 to 0.02
+                changePercent = Math.random() * 0.02; // 0% to +2%
             } else {
-                // Decrease between -5% to 0%
-                changePercent = -(Math.random() * 0.10); // -0.05 to 0
+                changePercent = -(Math.random() * 0.10); // -10% to 0%
             }
 
-            // Calculate new price from base_price
             const newPrice = Math.max(1, +(basePrice * (1 + changePercent)).toFixed(2));
-            // Update product price
-            await pool.query('UPDATE products SET price = ? WHERE id = ?', [newPrice, product.id]);
 
-            // Check price alerts for this product
+            await pool.query(
+                'UPDATE products SET price = $1 WHERE id = $2',
+                [newPrice, product.id]
+            );
+
+            // Optional: trigger your price alert check
             await checkPriceAlerts(product.id);
         }
 
-        console.log('Prices updated and alerts checked successfully');
+        console.log(`✅ ${products.length} product prices updated and alerts checked.`);
     } catch (err) {
-        console.error('Error updating prices:', err);
+        console.error('❌ Error updating prices:', err.message);
     }
 });
 app.get('/api/products/:id/reviews', async (req, res) => {
